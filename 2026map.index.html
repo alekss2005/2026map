@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="uk" data-theme="military">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>KYIV OSINT RADAR v15.6 — Sharp Descent</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+:root, [data-theme="military"]{
+  --bg:#050a10; --panel:rgba(8,16,24,.92); --panel-solid:#0b1520;
+  --text:#e8f0f5; --muted:#7a8f9e; --accent:#22d3ee; --accent-soft:rgba(34,211,238,.15);
+  --danger:#ef4444; --ok:#34d399; --warn:#fbbf24;
+  --border:rgba(34,211,238,.18); --header-bg:rgba(5,10,16,.94);
+  --btn-bg:rgba(12,22,32,.9); --btn-border:rgba(148,163,184,.22);
+  --event-border:#132028; --glow:0 0 12px rgba(34,211,238,.35);
+  --radius:12px; --font:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;overflow:hidden;font-family:var(--font-ui);background:var(--bg);color:var(--text);-webkit-tap-highlight-color:transparent}
+#app{position:absolute;inset:0;display:flex;flex-direction:column}
+.header{min-height:42px;background:var(--header-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:6px 12px;padding-top:calc(6px + var(--safe-top));z-index:1000;backdrop-filter:blur(16px);flex:0 0 auto;font-size:12px;gap:8px}
+.logo{font-weight:800;letter-spacing:.06em;font-size:11px;display:flex;align-items:center;gap:7px;white-space:nowrap;font-family:var(--font)}
+.logo-icon{font-size:14px;filter:drop-shadow(0 0 6px var(--accent))}
+.header-right{display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;min-width:0}
+.search-box{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:999px;overflow:hidden;height:32px;flex:1;max-width:260px;min-width:100px}
+.search-box input{background:transparent;border:0;color:var(--text);padding:0 12px;font-size:12px;width:100%;outline:none;font-family:var(--font-ui)}
+.search-box input::placeholder{color:var(--muted)}
+.search-box button{background:transparent;border:0;color:var(--accent);width:34px;height:32px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.lang-btn-header{background:var(--btn-bg);backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--accent);padding:0;border-radius:999px;font-size:11px;line-height:1;cursor:pointer;font-weight:800;min-width:34px;width:34px;height:32px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;letter-spacing:.04em;font-family:var(--font)}
+.status{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);font-weight:700;white-space:nowrap;font-family:var(--font);letter-spacing:.04em}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+.status-dot.err{background:var(--danger);box-shadow:0 0 10px var(--danger)}
+.status-dot.warn{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+#map{flex:1;min-height:0;width:100%;background:var(--bg)}
+[data-theme="military"] #map{background:#dbe4ee}
+
+/* ===== Target Card ===== */
+.target-card{
+  position:absolute;left:6px;right:6px;
+  bottom:calc(70px + var(--safe-bottom));
+  background:rgba(8,16,24,.97);
+  border:1px solid rgba(239,68,68,.45);
+  border-radius:14px;z-index:960;
+  backdrop-filter:blur(18px);
+  box-shadow:0 8px 32px rgba(0,0,0,.55);
+  overflow:hidden;display:none;
+  animation:cardIn .25s ease-out;
+}
+.target-card.show{display:block}
+@keyframes cardIn{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
+.tc-header{
+  background:linear-gradient(90deg,#7f1d1d,#dc2626);
+  color:#fff;padding:9px 12px;
+  font-weight:800;font-size:13px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.tc-close{background:rgba(0,0,0,.25);border:0;color:#fff;width:24px;height:24px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.tc-body{padding:11px 13px}
+.tc-status{font-size:15px;font-weight:800;margin-bottom:10px}
+.tc-metrics{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.tc-metric{flex:1;min-width:68px;background:rgba(255,255,255,.06);border-radius:10px;padding:7px 4px;text-align:center}
+.tc-metric .val{font-size:14px;font-weight:800;display:block}
+.tc-metric .lbl{font-size:9px;color:var(--muted);margin-top:2px;text-transform:uppercase}
+.tc-metric.danger .val{color:#fca5a5}
+.tc-hint{font-size:11px;color:var(--muted)}
+
+/* ===== Altitude badge ===== */
+.alt-badge{
+  position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.88);color:#22d3ee;
+  font-size:9px;font-weight:800;padding:1px 5px;border-radius:5px;
+  border:1px solid #22d3ee;white-space:nowrap;pointer-events:none;z-index:10;
+}
+.alt-badge.sharp{color:#fca5a5;border-color:#ef4444}
+
+/* Top-alert */
+.top-alert{position:absolute;top:calc(48px + var(--safe-top) + 8px);left:6px;right:6px;z-index:4600;border-radius:10px;overflow:hidden;display:none;box-shadow:0 6px 24px rgba(0,0,0,.5);backdrop-filter:blur(10px)}
+.top-alert.show{display:block}
+.top-alert.falling{background:linear-gradient(90deg,#78350f,#f59e0b,#78350f);color:#fff;border:1px solid #fcd34d}
+.top-alert.sharp{background:linear-gradient(90deg,#7f1d1d,#dc2626,#7f1d1d);color:#fff;border:1px solid #fca5a5;animation:bbPulse .7s ease-in-out infinite}
+@keyframes bbPulse{0%,100%{background:linear-gradient(90deg,#7f1d1d,#dc2626,#7f1d1d)}50%{background:linear-gradient(90deg,#dc2626,#fca5a5,#dc2626)}}
+.top-alert-inner{padding:9px 34px 9px 12px;display:flex;align-items:center;gap:10px;font-weight:800;font-size:.86rem}
+.top-alert-close{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.25);border:0;color:#fff;width:22px;height:22px;border-radius:50%;font-size:1rem;cursor:pointer}
+.hud-bottom{position:absolute;bottom:calc(14px + var(--safe-bottom));left:0;right:0;z-index:1000;padding:0 6px;pointer-events:none}
+.hud-bottom>*{pointer-events:auto}
+.btn-row{display:flex;gap:4px;overflow-x:auto;padding:4px 6px;background:var(--panel);border:1px solid var(--border);border-radius:999px;backdrop-filter:blur(18px);box-shadow:0 6px 20px rgba(0,0,0,.4);width:100%}
+button{background:var(--btn-bg);border:1px solid var(--btn-border);color:var(--text);padding:0;border-radius:var(--radius);font-size:.95rem;cursor:pointer;font-weight:700;min-width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center}
+button.on{border-color:var(--accent);box-shadow:var(--glow);background:var(--accent-soft)}
+.toast{position:absolute;left:50%;top:calc(48px + var(--safe-top) + 12px);transform:translateX(-50%);z-index:2000;background:var(--panel-solid);color:var(--text);padding:9px 14px;border-radius:999px;border:1px solid var(--border);font-size:12px;font-weight:700;opacity:0;transition:opacity .25s;pointer-events:none}
+.toast.show{opacity:1}
+.leaflet-popup-content-wrapper{background:var(--panel-solid);color:var(--text);border-radius:var(--radius);border:1px solid var(--border)}
+.threat-icon.falling{animation:fallingBlink .55s ease-in-out infinite}
+@keyframes fallingBlink{0%,100%{filter:drop-shadow(0 0 2px rgba(220,38,38,.9));opacity:1}50%{filter:drop-shadow(0 0 12px rgba(220,38,38,1));opacity:.35}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="logo"><span class="logo-icon">🛰</span><span>KYIV OSINT RADAR</span></div>
+    <div class="header-right">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Пошук місця..." autocomplete="off">
+        <button type="button" id="searchBtn">🔍</button>
+      </div>
+      <button type="button" class="lang-btn-header" id="btnLang">UA</button>
+      <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">ONLINE</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Top Alert -->
+  <div class="top-alert" id="topAlert">
+    <button class="top-alert-close" id="topAlertClose">×</button>
+    <div class="top-alert-inner">
+      <div class="top-alert-icon" id="topAlertIcon">🚨</div>
+      <div class="top-alert-body">
+        <div class="top-alert-title" id="topAlertTitle">—</div>
+        <div class="top-alert-place" id="topAlertPlace" style="display:none">—</div>
+        <div class="top-alert-meta" id="topAlertMeta" style="display:none">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Card -->
+  <div class="target-card" id="targetCard">
+    <div class="tc-header">
+      <span id="tcTitle">РІЗКЕ ЗНИЖЕННЯ · #—</span>
+      <button class="tc-close" id="tcClose">×</button>
+    </div>
+    <div class="tc-body">
+      <div class="tc-status" id="tcStatus">Ціль знижується · прямує до міста</div>
+      <div class="tc-metrics">
+        <div class="tc-metric danger"><span class="val" id="tcAlt">—</span><span class="lbl">Висота</span></div>
+        <div class="tc-metric"><span class="val" id="tcSpeed">—</span><span class="lbl">км/год</span></div>
+        <div class="tc-metric"><span class="val" id="tcEta">—</span><span class="lbl">до міста</span></div>
+        <div class="tc-metric"><span class="val" id="tcDist">—</span><span class="lbl">відстань</span></div>
+      </div>
+      <div class="tc-hint" id="tcHint">—</div>
+    </div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="btn-row">
+      <button type="button" id="btnRefresh" title="Оновити">↻</button>
+      <button type="button" id="btnScope" class="on" title="Масштаб">🌍</button>
+      <button type="button" id="btnRingsToggle" title="Кільця">🎯</button>
+      <button type="button" id="btnMapToggle" title="Карта">🛰</button>
+      <button type="button" id="soundToggle" class="on" title="Звук">🔔</button>
+      <button type="button" id="btnClear" class="danger" title="Очистити">✕</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+"use strict";
+
+/* ==================== CONFIG ==================== */
+const CONFIG = {
+  KYIV: [50.45, 30.52],
+  ZONE_RADIUS_KM: 250,
+  KYIV_OBLAST_RADIUS_KM: 120,
+  UKRAINE_CENTER: [48.5, 31.0],
+  UKRAINE_ZOOM: 6,
+  TILE_URL: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  TILE_URL_SAT: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  TILE_ATTR: '&copy; OSM',
+  SMOOTH_ALPHA: 0.4
+};
+
+/* ==================== UTILS ==================== */
+const $ = id => document.getElementById(id);
+function haversineKm(a, b, c, d) {
+  const R = 6371, toR = x => x * Math.PI / 180;
+  const dLat = toR(c - a), dLon = toR(d - b);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a)) * Math.cos(toR(c)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function bearingBetween(lat1, lon1, lat2, lon2) {
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180, Δλ = (lon2 - lon1) * Math.PI / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function destPoint(lat, lon, brg, distKm) {
+  const R = 6371, br = brg * Math.PI / 180, lat1 = lat * Math.PI / 180, lon1 = lon * Math.PI / 180;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(distKm / R) + Math.cos(lat1) * Math.sin(distKm / R) * Math.cos(br));
+  const lon2 = lon1 + Math.atan2(Math.sin(br) * Math.sin(distKm / R) * Math.cos(lat1), Math.cos(distKm / R) - Math.sin(lat1) * Math.sin(lat2));
+  return [lat2 * 180 / Math.PI, lon2 * 180 / Math.PI];
+}
+function showToast(msg, ms = 1800) {
+  const t = $("toast"); if (!t) return;
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.classList.remove("show"), ms);
+}
+function formatAlt(alt) {
+  if (alt == null) return "—";
+  return alt >= 1000 ? (alt / 1000).toFixed(1) + " км" : alt + " м";
+}
+
+/* ==================== MAP ==================== */
+let map, osmLayer, baseSat, currentBase = "sat";
+const threatLayer = L.layerGroup();
+const msgThreatLayer = L.layerGroup();
+
+function initMap() {
+  map = L.map("map", { center: CONFIG.KYIV, zoom: 10, zoomControl: false });
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+
+  baseSat = L.layerGroup();
+  L.tileLayer(CONFIG.TILE_URL_SAT, { maxZoom: 19, attribution: "Esri" }).addTo(baseSat);
+  baseSat.addTo(map);
+
+  osmLayer = L.tileLayer(CONFIG.TILE_URL, { maxZoom: 19, attribution: CONFIG.TILE_ATTR });
+
+  threatLayer.addTo(map);
+  msgThreatLayer.addTo(map);
+}
+
+/* ==================== SHARP DESCENT + TARGET CARD ==================== */
+function isSharpDescent(text, altHistory = []) {
+  const t = (text || "").toLowerCase();
+  if (/різке\s+знижен|резкое\s+снижен|падає|падает|втрачає\s+висоту|теряет\s+высоту|знижується|снижается|на\s+зниженн/i.test(t)) {
+    return true;
+  }
+  if (altHistory.length >= 2) {
+    const last = altHistory[altHistory.length - 1];
+    const prev = altHistory[altHistory.length - 2];
+    if (last.alt != null && prev.alt != null && last.ts > prev.ts) {
+      const dAlt = prev.alt - last.alt;
+      const dSec = (last.ts - prev.ts) / 1000;
+      if (dSec > 0 && dAlt / dSec > 12) return true;
+    }
+  }
+  return false;
+}
+
+function showTargetCard(data) {
+  const el = $("targetCard");
+  if (!el) return;
+
+  const isSharp = data.isSharp || data.falling;
+  $("tcTitle").textContent = (isSharp ? "РІЗКЕ ЗНИЖЕННЯ · " : "ЦІЛЬ · ") + (data.id || "#—");
+  $("tcStatus").textContent = isSharp
+    ? "Ціль знижується · прямує до міста"
+    : "Ціль прямує до міста";
+
+  $("tcAlt").textContent = data.alt != null ? "↓ " + formatAlt(data.alt) : "—";
+  $("tcSpeed").textContent = data.speed != null ? data.speed : "—";
+  $("tcEta").textContent = data.eta != null ? "~" + Math.round(data.eta) + " хв" : "—";
+  $("tcDist").textContent = data.dist != null ? data.dist.toFixed(1) + " км" : "—";
+  $("tcHint").textContent = data.hint || data.place || "—";
+
+  el.classList.add("show");
+}
+
+function hideTargetCard() {
+  const el = $("targetCard");
+  if (el) el.classList.remove("show");
+}
+
+/* ==================== ALERTS ==================== */
+const Alerts = {
+  show(kind, title, place, meta) {
+    const el = $("topAlert");
+    if (!el) return;
+    el.className = "top-alert show " + (kind || "");
+    $("topAlertIcon").textContent = kind === "sharp" ? "⚠️" : "🚨";
+    $("topAlertTitle").textContent = title || "—";
+    if (place) {
+      $("topAlertPlace").textContent = place;
+      $("topAlertPlace").style.display = "block";
+    } else $("topAlertPlace").style.display = "none";
+    if (meta) {
+      $("topAlertMeta").textContent = meta;
+      $("topAlertMeta").style.display = "block";
+    } else $("topAlertMeta").style.display = "none";
+
+    clearTimeout(el._tm);
+    el._tm = setTimeout(() => el.classList.remove("show"), kind === "sharp" ? 9000 : 12000);
+  },
+  hide() {
+    $("topAlert")?.classList.remove("show");
+  }
+};
+
+/* ==================== DEMO MARKER ==================== */
+function createDemoThreat() {
+  const lat = 50.58, lon = 30.48;
+  const alt = 700;
+  const speed = 519;
+  const dist = haversineKm(lat, lon, CONFIG.KYIV[0], CONFIG.KYIV[1]);
+  const eta = (dist / speed) * 60;
+  const isSharp = true;
+  const id = "#187";
+
+  const iconHtml = `
+    <div style="position:relative;width:22px;height:22px;">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+           animation:fallingBlink .55s ease-in-out infinite;">
+        <div style="width:16px;height:16px;background:#FFD700;
+             clip-path:polygon(50% 0%,100% 100%,50% 78%,0% 100%);
+             filter:drop-shadow(0 0 4px rgba(255,215,0,.8));"></div>
+      </div>
+      <div class="alt-badge sharp">↓ ${formatAlt(alt)}</div>
+    </div>`;
+
+  const icon = L.divIcon({
+    className: "",
+    html: iconHtml,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11]
+  });
+
+  const marker = L.marker([lat, lon], { icon, zIndexOffset: 1200 }).addTo(msgThreatLayer);
+
+  // Червоний конус
+  const heading = bearingBetween(lat, lon, CONFIG.KYIV[0], CONFIG.KYIV[1]);
+  const [endLat, endLon] = destPoint(lat, lon, heading, Math.min(12, dist));
+  L.polyline([[lat, lon], [endLat, endLon]], {
+    color: "#ef4444",
+    weight: 2.5,
+    opacity: 0.75,
+    dashArray: "5 7"
+  }).addTo(map);
+
+  // Кільце
+  L.circle([lat, lon], {
+    radius: 1200,
+    color: "#ef4444",
+    weight: 1.3,
+    opacity: 0.6,
+    fillColor: "#ef4444",
+    fillOpacity: 0.08,
+    dashArray: "4 5"
+  }).addTo(map);
+
+  marker.on("click", () => {
+    showTargetCard({
+      id,
+      isSharp,
+      alt,
+      speed,
+      eta,
+      dist,
+      place: "Вишгород",
+      hint: "Ймовірно реактивний · остання позиція Вишгород"
+    });
+  });
+
+  // Варіант A
+  setTimeout(() => {
+    showTargetCard({
+      id,
+      isSharp: true,
+      alt,
+      speed,
+      eta,
+      dist,
+      place: "Вишгород",
+      hint: "Ймовірно реактивний · остання позиція Вишгород"
+    });
+    Alerts.show("sharp",
+      `РІЗКЕ ЗНИЖЕННЯ · ${id}`,
+      "Вишгород",
+      `↓ ${formatAlt(alt)} · ~${Math.round(eta)} хв`
+    );
+  }, 700);
+
+  return marker;
+}
+
+/* ==================== UI ==================== */
+function initUI() {
+  $("btnRefresh")?.addEventListener("click", () => {
+    showToast("Оновлення…");
+  });
+
+  $("btnScope")?.addEventListener("click", () => {
+    showToast("Масштаб: Київ + 250 км / Вся Україна");
+  });
+
+  $("btnMapToggle")?.addEventListener("click", () => {
+    if (currentBase === "sat") {
+      map.removeLayer(baseSat);
+      osmLayer.addTo(map);
+      currentBase = "osm";
+      showToast("🗺 Схема");
+    } else {
+      map.removeLayer(osmLayer);
+      baseSat.addTo(map);
+      currentBase = "sat";
+      showToast("🛰 Супутник");
+    }
+  });
+
+  $("btnClear")?.addEventListener("click", () => {
+    msgThreatLayer.clearLayers();
+    hideTargetCard();
+    Alerts.hide();
+    showToast("Очищено");
+  });
+
+  $("tcClose")?.addEventListener("click", hideTargetCard);
+  $("topAlertClose")?.addEventListener("click", () => Alerts.hide());
+
+  map?.on("click", () => hideTargetCard());
+}
+
+/* ==================== INIT ==================== */
+function init() {
+  initMap();
+  initUI();
+  createDemoThreat();
+  console.log("[radar] v15.6 — Sharp Descent integrated");
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
